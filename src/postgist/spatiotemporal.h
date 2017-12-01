@@ -39,12 +39,20 @@
 #include <fmgr.h>
 #include <utils/timestamp.h>
 
+
+/* PostGIS */
+#include <liblwgeom.h>
+#include <lwgeom_pg.h>
+#include <liblwgeom_internal.h>
+#include <lwgeom_geos.h>
+
 struct spatiotemporal
 {
-	/*int32 vl_len_;        Varlena header  */
+	int32 vl_len_;        /*Varlena header*/
+  int32 dummy;
 	Timestamp start_time;
 	Timestamp end_time;
-	/*uint8_t data[1]; */
+	uint8_t data[1]; // 
 };
 
 
