@@ -51,9 +51,16 @@ spatiotemporal_make(PG_FUNCTION_ARGS)
   /*elog(INFO, "spatiotemporal_make CALL");*/
   char *str = PG_GETARG_CSTRING(0);
 
-  struct spatiotemporal *st = (struct spatiotemporal*) palloc(sizeof(struct spatiotemporal));
+  struct spatiotemporal *st  =  spatiotemporal_decode(str);
 
-  spatiotemporal_decode(str, st);
+  // char *timestamp = palloc(2 * sizeof(Timestamp) + 1);
+
+  // timestamp = DatumGetCString(DirectFunctionCall1(timestamp_out, PointerGetDatum(st->start_time)));
+
+  // elog(INFO, "trajectory_elem_out timestamp: %s", timestamp);
+
+
+  elog(INFO, "spatiotemporal_make FINISH");
 
   PG_RETURN_SPATIOTEMPORAL_P(st);
 }
@@ -65,6 +72,8 @@ Datum
 spatiotemporal_in(PG_FUNCTION_ARGS){
 
   char *str = PG_GETARG_CSTRING(0);
+
+  elog(INFO, "spatiotemporal_in CALL");
 
   char *hstr = str;
 
@@ -99,6 +108,8 @@ PG_FUNCTION_INFO_V1(spatiotemporal_out);
 Datum
 spatiotemporal_out(PG_FUNCTION_ARGS)
 {
+  elog(INFO, "spatiotemporal_out CALL ");
+
   struct spatiotemporal *st = PG_GETARG_SPATIOTEMPORAL_P(0);
 
   /* alloc a buffer for hex-string plus a trailing '\0' */
@@ -142,6 +153,46 @@ spatiotemporal_as_text(PG_FUNCTION_ARGS)
 
   appendStringInfoString(&str, end_time);
 
+  appendStringInfoChar(&str, ',');
+
+  char *hexwkb;
+
+  size_t hexwkb_size;
+
+  LWGEOM *lwgeom;
+
+  Point *point;
+	LWPOINT *lwpoint;
+
+  point = (Point*)palloc(sizeof(Point));
+
+  for(int i = 0; i < 6; i+=2 ){
+    point->x = st->data[i];
+    // st->data += sizeof(double);
+    point->y = st->data[i+1];
+
+    if ( ! point ){
+      elog(INFO, "null");
+      PG_RETURN_NULL();
+
+    }
+
+  	lwpoint = lwpoint_make2d(SRID_UNKNOWN, point->x, point->y);
+
+    //lwgeom = lwpoint_as_lwgeom(lwpoint);
+    lwgeom = (LWGEOM*)lwpoint;
+    // hexwkb = lwgeom_to_hexwkb(lwgeom, WKB_EXTENDED, &hexwkb_size);
+    hexwkb = lwgeom_to_wkt(lwgeom, WKT_ISO, DBL_DIG, &hexwkb_size);
+    elog(INFO, "lwgeom_to_hexwkb");
+
+    appendStringInfoChar(&str, '-');
+
+    appendStringInfoString(&str, hexwkb);
+
+  }
+
+
+  /*teste PointerGetDatum(gserialized_from_lwgeom())*/
   pfree(start_time);
   pfree(end_time);
 

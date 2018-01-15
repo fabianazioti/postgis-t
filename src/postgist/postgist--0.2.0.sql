@@ -53,8 +53,9 @@ CREATE OR REPLACE FUNCTION get_end_time(spatiotemporal)
 
 CREATE TYPE spatiotemporal
 (
-    input = spatiotemporal_in,
+    input = spatiotemporal_make,
     output = spatiotemporal_out,
-    internallength = 16,
+    internallength = variable,
+    storage = extended,
     alignment = double
 );

@@ -37,7 +37,7 @@
 /* PostGIS-T extension */
 #include "spatiotemporal.h"
 
-void spatiotemporal_decode(char *str, struct spatiotemporal *st);
+struct spatiotemporal *spatiotemporal_decode(char *str);
 
 
 

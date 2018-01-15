@@ -52,7 +52,7 @@ struct spatiotemporal
   int32 dummy;
 	Timestamp start_time;
 	Timestamp end_time;
-	uint8_t data[1]; // 
+	double data[1]; // 
 };
 
 
@@ -78,6 +78,13 @@ extern Datum spatiotemporal_duration(PG_FUNCTION_ARGS);
 extern Datum spatiotemporal_get_start_time(PG_FUNCTION_ARGS);
 extern Datum spatiotemporal_get_end_time(PG_FUNCTION_ARGS);
 
+
+
+/*Internal operation*/
+
+extern size_t lwgeom_size(const LWGEOM *lwgeom);
+extern size_t gserialized_from_lwgeom_point(const LWGEOM *geom, uint8_t *buf);
+extern LWGEOM* lwgeom_from_gserialized_buffer(uint8_t *data_ptr);
 
 
 

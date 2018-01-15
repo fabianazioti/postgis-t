@@ -65,7 +65,10 @@
 #define RDELIM ')'
 #define COLLECTION_DELIM ';'
 
+#define LWGEOM_SIZE_POINT 24
 
+
+inline
 int coord_count(char *s)
 {
 	int ndelim = 0;
@@ -79,7 +82,7 @@ int coord_count(char *s)
 	return ndelim;
 }
 
-inline 
+inline
 LWGEOM *position_decode(char **cp)
 {
 	int srid = 0;
@@ -88,7 +91,6 @@ LWGEOM *position_decode(char **cp)
 
 	LWGEOM_PARSER_RESULT lwg_parser_result;
 
-	
 	char *position;
 
 	char *p;
@@ -111,11 +113,9 @@ LWGEOM *position_decode(char **cp)
 
 	*cp += index;
 
-	elog(INFO, "position %s ", position);
+	elog(INFO, "POSITION %s ", position);
 
 	// code from POSTGIS
-
-	//lwgeom_parse_wkt(&pr, wkt, LW_PARSER_CHECK_NONE) LW_FAILURE;
 
 	if(lwgeom_parse_wkt(&lwg_parser_result, position, LW_PARSER_CHECK_ALL) == LW_FAILURE )
 	{
@@ -135,13 +135,6 @@ LWGEOM *position_decode(char **cp)
 		elog(INFO, "geometry is empty");
     	lwgeom_free(lwgeom);
     	return NULL;
-  	}
-
-
-
-	if (lwgeom->type == POINTTYPE) {
-    		/* teste para ver se o lwgeom esta correto */
-    		elog(NOTICE, " POINTTYPE");
   	}
 
 	return lwgeom;
@@ -175,28 +168,47 @@ Timestamp timestamp_decode(char **cp)
 }
 
 /*uint8_t *sequence_decode(char *str, int ncoords, char **endptr)*/
-static inline 
-void sequence_decode(char *str, int ncoords, char **endptr)                                  
+static inline
+uint8_t * sequence_decode(char *str, int ncoords, char **endptr, size_t *size)
 {
 	uint8_t *data = NULL;
 
+	uint8_t *ptr = NULL;
+
 	size_t expected_size = 0;
+
+	size_t return_size = 0;
 
 	/*lwgeom e position_time estao sendo substituidos toda hora*/
 	/*como colocar no data ?*/
+
+	/*expected_size = (2 * sizeof(Timestamp))+(2*sizeof(int32)) + (ncoords * (sizeof(Timestamp) + LWGEOM_SIZE_POINT));*/
+	expected_size = (2*sizeof(int32)) + (2 * sizeof(Timestamp)) + (ncoords * (2 * sizeof(double)));
+
+	elog(INFO, " ---  expected_size ---  %zd", expected_size);
+
+	data = lwalloc(expected_size);
+
+	ptr = data;
+
+	/*pass size times*/
+	ptr += (2 * sizeof(int32) );
+	ptr += (2 * sizeof(Timestamp));
+
 
 	for(int i = 0; i < ncoords; i++)
 	{
 		LWGEOM *lwgeom = NULL;
 
 		Timestamp position_time = 0;
-		
+
 		lwgeom = position_decode(&str);
 
 		if (lwgeom->type == POINTTYPE) {
     		/* teste para ver se o lwgeom esta correto */
-    		elog(INFO, "geom_elem is POINTTYPE");
-  		}
+    		elog(INFO, "****** geom_elem is POINTTYPE *****");
+    		elog(INFO, "sizeof %lu", sizeof(lwgeom));
+  	}
 
 		/*skip , */
 		++str;
@@ -208,6 +220,7 @@ void sequence_decode(char *str, int ncoords, char **endptr)
 
 		position_time = timestamp_decode(&str);
 
+
 		while(isspace(*str))
 				str++;
 
@@ -216,15 +229,66 @@ void sequence_decode(char *str, int ncoords, char **endptr)
 	      ++str;
 
 	  while(isspace(*str))
-				str++;
+				++str;
+
+
+		/* Write in the serialized form of the gbox, if necessary. */
+		//if ( geom->bbox )
+		//	ptr += gserialized_from_gbox(geom->bbox, ptr);
+
+		/* Write in the serialized form of the geometry. */
+		// ptr += gserialized_from_lwgeom_point(lwgeom, ptr);
+
+		Point *point;
+		LWPOINT *lwpoint;
+
+
+		lwpoint = lwgeom_as_lwpoint(lwgeom);
+
+		point = (Point*)palloc(sizeof(Point));
+		point->x = lwpoint_get_x(lwpoint);
+		elog(INFO , "point->x %lf ", point->x);
+		point->y = lwpoint_get_y(lwpoint);
+		elog(INFO , "point->y %lf ", point->y);
+
+		memcpy(ptr, &point->x, sizeof(double));
+		ptr += sizeof(double);
+
+		memcpy(ptr, &point->y, sizeof(double));
+		ptr += sizeof(double);
+
+		/*s serialized Time */
+		// memcpy(ptr, &position_time, sizeof(Timestamp));
+		// ptr += sizeof(Timestamp);
+
+		//lwpoint_free(lwpoint);
 
 	}
 
 	*endptr = str;
 
+	/* Calculate size as returned by data processing functions. */
+	return_size = ptr - data;
+
+	if ( expected_size != return_size ) /* Uh oh! */
+	{
+		elog(INFO, "Return size (%lu) not equal to expected size (%lu)!", return_size, expected_size);
+	}
+
+	if ( size ) /* Return the output size to the caller if necessary. */
+		*size = return_size;
+
+
+	return data;
+
+	// g = gserialized_from_lwgeom(lwgeom, &ret_size);
+	// if ( ! g ) lwpgerror("Unable to serialize lwgeom.");
+
+	// SET_VARSIZE(g, ret_size);
+
 }
 
-void spatiotemporal_decode(char *str, struct spatiotemporal *st)
+struct spatiotemporal *spatiotemporal_decode(char *str)
 {
 	char *cp = str;
 
@@ -234,7 +298,11 @@ void spatiotemporal_decode(char *str, struct spatiotemporal *st)
 
 	int number_coords;
 
-	
+	struct spatiotemporal *st = NULL;
+
+	size_t ret_size = 0;
+
+
 	while(isspace(*cp))
 		cp++;
 
@@ -275,19 +343,45 @@ void spatiotemporal_decode(char *str, struct spatiotemporal *st)
 			while(isspace(*cp))
 				cp++;
 
-			st->start_time = start_time;
+			// st->start_time = start_time;
 
-			st->end_time = end_time;
+			// st->end_time = end_time;
+
+
 
 			while(isspace(*cp))
 				cp++;
 
 			/* get sequence - only for point*/
 			number_coords = coord_count(cp);
-			
+
 			if(strncasecmp(cp, POINT_WKT_TOKEN, POINT_WKT_TOKEN_LEN) == 0)
 			{
-				sequence_decode(cp, number_coords, &cp);
+				uint8_t *data=  sequence_decode(cp, number_coords, &cp, &ret_size);
+
+				st = (struct spatiotemporal*)data;
+
+				if ( ! st ){
+					elog(INFO, "Unable to serialize lwgeom.");
+				}
+				else {
+
+					st->dummy = 0;
+
+					st->start_time = start_time;
+
+					st->end_time = end_time;
+
+					SET_VARSIZE(st, ret_size);
+
+					char *timestamp = palloc(2 * sizeof(Timestamp) + 1);
+
+				  	timestamp = DatumGetCString(DirectFunctionCall1(timestamp_out, PointerGetDatum(st->start_time)));
+
+				  	elog(INFO, " timestamp SERIALIZED: (%s)", timestamp);
+
+				}
+
 
 			}
 
@@ -307,11 +401,11 @@ void spatiotemporal_decode(char *str, struct spatiotemporal *st)
 			if(*cp != '\0')
 				ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-						errmsg("invalid input syntax for type string fail")));			
+						errmsg("invalid input syntax for type string fail")));
 
 		}
 
-
+		return st;
 
 	}
 
